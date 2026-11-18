@@ -37,3 +37,13 @@
 ## 已知不覆盖
 
 数据来自仓内样例或用户粘贴文件，不连接外部业务生产系统。平台不执行实际资金划转或行政审批。
+
+## 断点续传与两级结果（新增）
+
+| 关注点 | 处理 | 位置 | 测试 |
+|---|---|---|---|
+| 网络截断后断点续跑 | 分块按 (session,offset) 持久化，重启可接续；同偏移重传幂等 | `app/uploads.py` `app/modules/uploads_api.py` | `tests/test_uploads.py::test_resume_after_interruption_and_idempotent_retry` `::test_session_survives_store_reopen` |
+| 不重复采信 | 同偏移摘要比对、重叠分块拒绝、正式批 INSERT OR IGNORE 复用批号 | `app/uploads.py` `app/store.py` | `::test_duplicate_full_upload_reuses_same_run` `::test_chunk_conflict_same_offset_rejected` |
+| 乱序到达同一份结果 | 只认从偏移0连续前缀，拼齐后字节与一次上传一致 ⇒ 同批号 | `app/uploads.py` | `::test_out_of_order_chunks_yield_identical_run` |
+| 临时/正式来源边界 | P- 前缀临时批号隔离表，不可复核/导出/入史；整文件 sha256 通过才出正式批 | `app/engine.py` `app/manifest.py` `app/main.py` | `::test_provisional_id_cannot_review_export_rerun_or_page` `::test_digest_mismatch_refuses_official_run` |
+| 截断末行显式隔离 | TRUNCATED_TAIL 原因码，临时预览不采信截断行 | `app/modules/intake/reader.py` | `::test_provisional_preview_is_marked_and_quarantines_truncated_tail` |
